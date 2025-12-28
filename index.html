@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acromio - Authentication</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        .icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+        }
+        
+        h1 {
+            color: #1a202c;
+            font-size: 28px;
+            margin-bottom: 16px;
+        }
+        
+        p {
+            color: #4a5568;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        }
+        
+        .info {
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            margin-top: 24px;
+            text-align: left;
+            border-radius: 4px;
+        }
+        
+        .info strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+        
+        .success {
+            border-left-color: #48bb78;
+        }
+        
+        .error {
+            border-left-color: #f56565;
+        }
+        
+        code {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon" id="icon">⏳</div>
+        <h1 id="title">Processing...</h1>
+        <p id="message">Please wait while we process your request...</p>
+        <div id="details"></div>
+    </div>
+
+    <script>
+        // Parse URL fragments (Supabase uses #fragment not ?query)
+        function getFragmentParams() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            return {
+                type: params.get('type'),
+                access_token: params.get('access_token'),
+                error: params.get('error'),
+                error_description: params.get('error_description')
+            };
+        }
+
+        // Handle different auth types
+        function handleAuth() {
+            const params = getFragmentParams();
+            const icon = document.getElementById('icon');
+            const title = document.getElementById('title');
+            const message = document.getElementById('message');
+            const details = document.getElementById('details');
+
+            if (params.error) {
+                // Error occurred
+                icon.textContent = '❌';
+                title.textContent = 'Authentication Error';
+                message.textContent = params.error_description || params.error;
+                details.innerHTML = `
+                    <div class="info error">
+                        <strong>What to do:</strong>
+                        Please try again or contact support if the problem persists.
+                    </div>
+                `;
+            } else if (params.type === 'signup') {
+                // Email verification
+                icon.textContent = '✅';
+                title.textContent = 'Email Verified!';
+                message.textContent = 'Your email has been successfully verified.';
+                details.innerHTML = `
+                    <div class="info success">
+                        <strong>Next step:</strong>
+                        Return to the Acromio app and log in with your credentials.
+                    </div>
+                `;
+            } else if (params.type === 'recovery') {
+                // Password reset - show password update form
+                icon.textContent = '🔐';
+                title.textContent = 'Reset Your Password';
+                message.textContent = 'Enter your new password below.';
+                details.innerHTML = `
+                    <div class="info">
+                        <form id="resetForm" style="margin-top: 16px;">
+                            <input type="password" id="newPassword" placeholder="New password (min. 6 characters)" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; font-size: 14px;" required minlength="6">
+                            <input type="password" id="confirmPassword" placeholder="Confirm password" 
+                                   style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; font-size: 14px;" required minlength="6">
+                            <button type="submit" class="button" style="width: 100%; border: none; cursor: pointer; font-size: 16px;">
+                                Update Password
+                            </button>
+                        </form>
+                        <div id="resetMessage" style="margin-top: 16px; display: none;"></div>
+                    </div>
+                `;
+                
+                // Handle password reset form
+                document.getElementById('resetForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const newPassword = document.getElementById('newPassword').value;
+                    const confirmPassword = document.getElementById('confirmPassword').value;
+                    const resetMessage = document.getElementById('resetMessage');
+                    
+                    if (newPassword !== confirmPassword) {
+                        resetMessage.style.display = 'block';
+                        resetMessage.className = 'info error';
+                        resetMessage.innerHTML = '<strong>Error:</strong> Passwords do not match';
+                        return;
+                    }
+                    
+                    // Update password via Supabase
+                    try {
+                        const response = await fetch('https://ltmqtlqcagljschgkrgz.supabase.co/auth/v1/user', {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'apikey': 'YOUR_SUPABASE_ANON_KEY',
+                                'Authorization': `Bearer ${params.access_token}`
+                            },
+                            body: JSON.stringify({ password: newPassword })
+                        });
+                        
+                        if (response.ok) {
+                            icon.textContent = '✅';
+                            title.textContent = 'Password Updated!';
+                            message.textContent = 'Your password has been successfully updated.';
+                            details.innerHTML = `
+                                <div class="info success">
+                                    <strong>Next step:</strong>
+                                    Return to the Acromio app and log in with your new password.
+                                </div>
+                            `;
+                        } else {
+                            throw new Error('Failed to update password');
+                        }
+                    } catch (error) {
+                        resetMessage.style.display = 'block';
+                        resetMessage.className = 'info error';
+                        resetMessage.innerHTML = '<strong>Error:</strong> Failed to update password. Please try again.';
+                    }
+                });
+            } else {
+                // Unknown or missing type
+                icon.textContent = 'ℹ️';
+                title.textContent = 'Authentication Complete';
+                message.textContent = 'Please return to the Acromio application.';
+                details.innerHTML = `
+                    <div class="info">
+                        <strong>Note:</strong>
+                        If you were verifying your email or resetting your password, the process is complete.
+                    </div>
+                `;
+            }
+        }
+
+        // Run on page load
+        handleAuth();
+    </script>
+</body>
+</html>
